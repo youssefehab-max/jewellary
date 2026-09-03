@@ -1,8 +1,19 @@
-import React, { useMemo, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { ChevronDown, SlidersHorizontal, X } from 'lucide-react'
-import { PRODUCTS, GOLD_COLORS, CATEGORIES } from '../data/products'
 import { ProductCard } from '../components/ProductCard'
+import { supabase } from '../supabaseClient'
+
+const GOLD_COLORS = ['Yellow', 'White', 'Rose']
+
+const CATEGORIES = [
+  { id: 'mens', label: "Men's Collection", slug: 'mens-collection' },
+  { id: 'rings', label: 'Rings', slug: 'rings' },
+  { id: 'necklaces', label: 'Necklaces', slug: 'necklaces' },
+  { id: 'bracelets', label: 'Bracelets', slug: 'bracelets' },
+  { id: 'diamonds', label: 'Diamonds', slug: 'diamonds' },
+  { id: 'gold', label: 'Gold', slug: 'gold' },
+]
 
 const SORT_OPTIONS = [
   { value: 'featured', label: 'Featured' },
@@ -11,6 +22,24 @@ const SORT_OPTIONS = [
   { value: 'best-selling', label: 'Best Selling' },
   { value: 'alphabetical', label: 'Alphabetically' },
 ]
+
+function mapProduct(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    price: Number(row.price),
+    compareAtPrice: row.compare_at_price != null ? Number(row.compare_at_price) : null,
+    category: row.category,
+    tags: row.tags || [],
+    inStock: row.in_stock ?? true,
+    goldColors: row.gold_colors || [],
+    sizes: row.sizes || [],
+    images: row.images || [],
+    material: row.material,
+    weight: row.weight,
+    description: row.description,
+  }
+}
 
 function FilterSection({ title, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -27,8 +56,13 @@ function FilterSection({ title, children, defaultOpen = true }) {
 
 export default function Collection() {
   const { slug } = useParams()
-  const [searchParams] = useSearchParams()
-  const categoryLabel = CATEGORIES.find((c) => c.slug === slug)?.label || 'All Jewelry'
+  const categoryMeta = CATEGORIES.find((c) => c.slug === slug)
+  const categoryLabel = categoryMeta?.label || 'All Jewelry'
+  const categoryKey = categoryMeta?.id || slug
+
+  const [products, setProducts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   const [sort, setSort] = useState('featured')
   const [availability, setAvailability] = useState({ inStock: false, soldOut: false })
@@ -36,19 +70,51 @@ export default function Collection() {
   const [goldColor, setGoldColor] = useState([])
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadProducts() {
+      setLoading(true)
+      setError('')
+      const { data, error: fetchError } = await supabase.from('products').select('*')
+
+      if (cancelled) return
+
+      if (fetchError) {
+        console.error(fetchError)
+        setError(fetchError.message)
+        setProducts([])
+      } else {
+        setProducts((data || []).map(mapProduct))
+      }
+      setLoading(false)
+    }
+
+    loadProducts()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const toggleGoldColor = (c) =>
     setGoldColor((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]))
 
   const filtered = useMemo(() => {
-    let list = PRODUCTS.filter((p) => p.category === slug)
-    if (list.length === 0 && !slug) list = PRODUCTS
+    let list = products.filter(
+      (p) => p.category === slug || p.category === categoryKey || p.tags?.includes(slug)
+    )
+    if (list.length === 0 && !slug) list = products
+    // If slug filter yields nothing but we have products, show all for unknown slugs only when no category match attempted
+    if (list.length === 0 && products.length > 0 && !categoryMeta) list = products
 
     if (availability.inStock && !availability.soldOut) list = list.filter((p) => p.inStock)
     if (availability.soldOut && !availability.inStock) list = list.filter((p) => !p.inStock)
 
     list = list.filter((p) => p.price >= priceRange[0] && p.price <= priceRange[1])
 
-    if (goldColor.length > 0) list = list.filter((p) => p.goldColors.some((c) => goldColor.includes(c)))
+    if (goldColor.length > 0) {
+      list = list.filter((p) => (p.goldColors || []).some((c) => goldColor.includes(c)))
+    }
 
     switch (sort) {
       case 'price-asc':
@@ -64,7 +130,7 @@ export default function Collection() {
         break
     }
     return list
-  }, [slug, sort, availability, priceRange, goldColor])
+  }, [products, slug, categoryKey, categoryMeta, sort, availability, priceRange, goldColor])
 
   const filtersPanel = (
     <div>
@@ -119,7 +185,9 @@ export default function Collection() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
       <h1 className="font-serif text-3xl sm:text-4xl mb-1">{categoryLabel}</h1>
-      <p className="text-sm text-charcoal/50 mb-8">{filtered.length} pieces</p>
+      <p className="text-sm text-charcoal/50 mb-8">
+        {loading ? 'Loading…' : `${filtered.length} pieces`}
+      </p>
 
       <div className="flex items-center justify-between mb-6 gap-3">
         <button
@@ -165,10 +233,19 @@ export default function Collection() {
         )}
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-8">
-          {filtered.map((p) => (
-            <ProductCard key={p.id} product={p} />
-          ))}
-          {filtered.length === 0 && (
+          {loading && (
+            <p className="col-span-full text-sm text-charcoal/50 py-16 text-center">Loading pieces…</p>
+          )}
+
+          {!loading && error && (
+            <p className="col-span-full text-sm text-red-600/80 py-16 text-center">{error}</p>
+          )}
+
+          {!loading &&
+            !error &&
+            filtered.map((p) => <ProductCard key={p.id} product={p} />)}
+
+          {!loading && !error && filtered.length === 0 && (
             <p className="col-span-full text-sm text-charcoal/50 py-16 text-center">
               No pieces match these filters yet.
             </p>
