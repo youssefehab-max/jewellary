@@ -1,4 +1,5 @@
 import React from 'react'
+import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X, Minus, Plus, Trash2 } from 'lucide-react'
 import { useCart } from '../context/CartContext'
@@ -15,14 +16,13 @@ export function CartDrawer() {
     removeItem,
     lineKey,
   } = useCart()
+  const navigate = useNavigate()
 
-  // دالة التعامل مع الـ Checkout وتتبع حدث الـ Purchase
   const handleCheckout = () => {
     if (items.length === 0) return
 
-    // إرسال حدث الشراء لـ Meta Pixel
     if (typeof window !== 'undefined' && window.fbq) {
-      window.fbq('track', 'Purchase', {
+      window.fbq('track', 'InitiateCheckout', {
         content_ids: items.map((item) => item.id),
         content_type: 'product',
         value: subtotal,
@@ -30,8 +30,8 @@ export function CartDrawer() {
       })
     }
 
-    // هنا يمكنك توجيه المستخدم لبوابة الدفع أو إغلاق السلة
     closeCart()
+    navigate('/checkout')
   }
 
   return (

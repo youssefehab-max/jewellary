@@ -9,6 +9,10 @@ import { Footer } from './components/Footer'
 import Home from './pages/Home'
 import Collection from './pages/Collection'
 import ProductDetail from './pages/ProductDetail'
+import Checkout from './pages/Checkout'
+import OrderSuccess from './pages/OrderSuccess'
+import OrderFailed from './pages/OrderFailed'
+import Admin from './pages/Admin'
 
 // Component to track page views with Facebook Pixel
 function PixelPageViewTracker() {
@@ -47,6 +51,10 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/collections/:slug" element={<Collection />} />
           <Route path="/products/:id" element={<ProductDetail />} />
+          <Route path="/checkout" element={<Checkout />} />
+          <Route path="/order-success" element={<OrderSuccess />} />
+          <Route path="/order-failed" element={<OrderFailed />} />
+          <Route path="/admin" element={<Admin />} />
         </Routes>
       </main>
 
